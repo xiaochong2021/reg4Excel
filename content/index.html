@@ -89,7 +89,10 @@
                 <a-input v-model:value="formState.logicCode" placeholder="使用and、or、not、()、数字索引"></a-input>
             </a-form-item>
             <a-form-item :wrapper-col="{ span: 14, offset: 4 }">
-                <a-button type="primary" html-type="submit">确认</a-button>
+                <a-space>
+                    <a-button type="primary" html-type="submit">确认</a-button>
+                    <a-button @click="preStep">上一步</a-button>
+                </a-space>
             </a-form-item>
         </a-form>
     </a-spin>
@@ -164,7 +167,16 @@
 
                 my_object.sigLoadingTip.connect(msg => {
                     tip.value = msg;
-                })
+                });
+
+                //上一步
+                const preStep = () => {
+                    pageNum.value = 0;
+                    formState.logicCode = "";
+                    formState.regColumn = "";
+                    textColumns.value = [];
+                    regColumns.value = [];
+                }
 
                 return {
                     formState,
@@ -178,6 +190,7 @@
                     onFilePathEnsure,
                     listItemRender,
                     onFinalEnsure,
+                    preStep,
                 }
             }
         });

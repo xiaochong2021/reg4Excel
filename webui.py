@@ -1,10 +1,11 @@
-from PyQt5.QtCore import QUrl
+from PyQt5.QtCore import QUrl, QThread, pyqtSignal
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import QFileDialog, QApplication
 from openpyxl import load_workbook, Workbook
 import re
 import time
+import math
 
 from MyObjectCls import MyObjectCls
 
@@ -18,6 +19,7 @@ class MainWin(QWebEngineView):
     text_wb = None
     text_sh = None
     text_columns = list()
+    thread = None
 
     def __init__(self, main_entry):
         QWebEngineView.__init__(self)
@@ -49,6 +51,7 @@ class MainWin(QWebEngineView):
         # 获取正则列
         self.reg_wb = load_workbook(self.reg_path)
         self.reg_sh = self.reg_wb.worksheets[0]
+        self.reg_columns = []
         for cell in self.reg_sh['1']:
             self.reg_columns.append({'value': cell.column, 'label': cell.value})
 
@@ -56,27 +59,41 @@ class MainWin(QWebEngineView):
         self.text_wb = load_workbook(self.text_path)
         self.text_sh = self.text_wb.worksheets[0]
 
+        self.text_columns = []
         for cell in self.text_sh['1']:
             self.text_columns.append({'value': cell.column, 'label': cell.value})
         self.__my_object.sigSetVueRegColumns.emit(self.text_columns, self.reg_columns)
 
     def start(self, text_column_index, reg_column_index, logic_code):
-        result_wb = Workbook()
-        result_sh = result_wb.active
-        result_sh.append([self.text_sh.cell(row=1, column=text_column_index).value, '命中正则组'])
-        text_columns_tuple = tuple(self.text_sh.columns)
-        for cell in text_columns_tuple[text_column_index - 1]:
-            if cell.row == 1:
-                continue
-            result = self.check_text(str(cell.value), logic_code, reg_column_index)
-            if type(result) is bool:
-                self.__my_object.sigInfo.emit('码表逻辑语法错误', 'error')
-                break
-            else:
-                result_sh.append([self.text_sh.cell(row=cell.row, column=text_column_index).value, result])
-                self.__my_object.sigLoadingTip.emit(str((cell.row / self.text_sh.max_row) * 100) + '%')
-        result_wb.save(time.strftime("%Y-%m-%d-%H%M%S.xlsx", time.localtime()))
-        self.__my_object.sigInfo.emit('匹配完成，结果已导出', 'success')
+        self.thread = ProcessReg()
+        self.thread.set_params(self.reg_sh, self.text_sh, text_column_index, reg_column_index, logic_code)
+        self.thread.trigger.connect(self.message_ui)
+        self.thread.start()
+
+    def message_ui(self, message, message_type):
+        if message_type == 'spin':
+            self.__my_object.sigLoadingTip.emit(message)
+        else:
+            self.__my_object.sigInfo.emit(message, message_type)
+
+
+class ProcessReg(QThread):
+    trigger = pyqtSignal(str, str)
+    reg_sh = None
+    text_sh = None
+    text_column_index = None
+    reg_column_index = None
+    logic_code = None
+
+    def __init__(self):
+        super(ProcessReg, self).__init__()
+
+    def set_params(self, reg_sh, text_sh, text_column_index, reg_column_index, logic_code):
+        self.reg_sh = reg_sh
+        self.text_sh = text_sh
+        self.text_column_index = text_column_index
+        self.reg_column_index = reg_column_index
+        self.logic_code = logic_code
 
     def check_text(self, search_text, logic_code, reg_column_index):
         # 匹配到的正则组名称
@@ -95,7 +112,7 @@ class MainWin(QWebEngineView):
                     reg_cell_value = str(self.reg_sh.cell(row=row_index, column=int(logic_num)).value)
                     re_logic_map[logic_num] = str(re.search(r"" + reg_cell_value, search_text) is not None)
 
-            logic_code_list = re.split(r'\s+', logic_code)
+            logic_code_list = re.split(r'\s+|\b(?=\()|\b(?=\))|(?<=\()\b|(?<=\))\b', logic_code)
             for index, code in enumerate(logic_code_list):
                 if code in re_logic_map:
                     logic_code_list[index] = re_logic_map[code]
@@ -108,7 +125,29 @@ class MainWin(QWebEngineView):
             except Exception as e:
                 return False
 
-            return '，'.join(reg_match_list)
+        return '，'.join(reg_match_list)
+
+    def run(self):
+        try:
+            result_wb = Workbook()
+            result_sh = result_wb.active
+            result_sh.append([self.text_sh.cell(row=1, column=self.text_column_index).value,
+                              self.reg_sh.cell(row=1, column=self.reg_column_index).value])
+            is_logic_code_error = self.check_text('测试', self.logic_code, self.reg_column_index)
+            if type(is_logic_code_error) is bool:
+                self.trigger.emit('码表逻辑语法错误', 'error')
+                return
+            text_columns_tuple = tuple(self.text_sh.columns)
+            for cell in text_columns_tuple[self.text_column_index - 1]:
+                if cell.row == 1:
+                    continue
+                result = self.check_text(str(cell.value), self.logic_code, self.reg_column_index)
+                result_sh.append([self.text_sh.cell(row=cell.row, column=self.text_column_index).value, result])
+                self.trigger.emit((str(math.ceil(cell.row / self.text_sh.max_row) * 100)) + '%', 'spin')
+            result_wb.save(time.strftime("导出文件/%Y-%m-%d-%H%M%S.xlsx", time.localtime()))
+            self.trigger.emit("匹配完成，结果已导出", "success")
+        except Exception as e:
+            self.trigger.emit("未知错误", "error")
 
 
 if __name__ == '__main__':
