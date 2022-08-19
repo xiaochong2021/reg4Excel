@@ -8,7 +8,6 @@
     <script src="js/antd.min.js"></script>
     <link rel="stylesheet" href="css/antd.min.css" type="text/css">
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-
 </head>
 <body>
 <div id="app">
@@ -86,7 +85,7 @@
                     :rules="[{ required: true, message: '码表逻辑不能为空', trigger:'blur' }]"
                     name="logicCode"
             >
-                <a-input v-model:value="formState.logicCode" placeholder="使用and、or、not、()、数字索引"></a-input>
+                <a-auto-complete v-model:value="formState.logicCode" placeholder="使用and、or、not、()、数字索引"></a-auto-complete>
             </a-form-item>
             <a-form-item :wrapper-col="{ span: 14, offset: 4 }">
                 <a-space>

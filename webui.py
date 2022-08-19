@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QUrl, QThread, pyqtSignal
+from PyQt5.QtCore import QUrl, QThread, pyqtSignal,QCoreApplication,Qt
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import QFileDialog, QApplication
@@ -137,13 +137,17 @@ class ProcessReg(QThread):
             if type(is_logic_code_error) is bool:
                 self.trigger.emit('码表逻辑语法错误', 'error')
                 return
+            progress_num = 0
             text_columns_tuple = tuple(self.text_sh.columns)
             for cell in text_columns_tuple[self.text_column_index - 1]:
                 if cell.row == 1:
                     continue
                 result = self.check_text(str(cell.value), self.logic_code, self.reg_column_index)
                 result_sh.append([self.text_sh.cell(row=cell.row, column=self.text_column_index).value, result])
-                self.trigger.emit((str(math.ceil(cell.row / self.text_sh.max_row) * 100)) + '%', 'spin')
+                progress_num_now = math.ceil(cell.row / self.text_sh.max_row * 100)
+                if progress_num != progress_num_now:
+                    self.trigger.emit('{}%'.format(progress_num_now), 'spin')
+                    progress_num = progress_num_now
             result_wb.save(time.strftime("导出文件/%Y-%m-%d-%H%M%S.xlsx", time.localtime()))
             self.trigger.emit("匹配完成，结果已导出", "success")
         except Exception as e:
@@ -153,10 +157,11 @@ class ProcessReg(QThread):
 if __name__ == '__main__':
     import sys, os
 
+    QCoreApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     app = QApplication(sys.argv)
     main_entry = os.path.realpath(os.path.dirname(__file__) + "/content/index.html")
     print(main_entry)
     w = MainWin(main_entry)
     w.resize(600, 500)
     w.show()
-    app.exec_()
+    sys.exit(app.exec_())
