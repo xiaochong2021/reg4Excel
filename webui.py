@@ -37,7 +37,8 @@ class MainWin(QWebEngineView):
 
     def getRegFilePath(self, file_type):
         try:
-            f_name = QFileDialog.getOpenFileName(self, '请选择原数据excel文件', os.getcwd(), 'Excel文件(*.xlsx;*.xls;)')
+            f_name = QFileDialog.getOpenFileName(self, '请选择原数据excel文件', os.getcwd(),
+                                                 'Excel文件(*.xlsx;*.xls;*.csv;*.xlsm)')
             if file_type == 'reg':
                 self.__my_object.sigSetVueRegFilePath.emit(f_name[0], 'reg')
                 self.reg_path = f_name[0]
@@ -110,7 +111,8 @@ class ProcessReg(QThread):
                 if logic_num not in re_logic_map:
                     # excel的数据有可能时数字，需要转成字符串
                     reg_cell_value = str(self.reg_sh.cell(row=row_index, column=int(logic_num)).value)
-                    re_logic_map[logic_num] = str(re.search(r"" + reg_cell_value, search_text) is not None)
+                    math_str = re.search(r"" + reg_cell_value, search_text, re.I)
+                    re_logic_map[logic_num] = str(math_str is not None)
 
             logic_code_list = re.split(r'\s+|\b(?=\()|\b(?=\))|(?<=\()\b|(?<=\))\b', logic_code)
             for index, code in enumerate(logic_code_list):
@@ -131,8 +133,11 @@ class ProcessReg(QThread):
         try:
             result_wb = Workbook()
             result_sh = result_wb.active
-            result_sh.append([self.text_sh.cell(row=1, column=self.text_column_index).value,
-                              self.reg_sh.cell(row=1, column=self.reg_column_index).value])
+            header_row = list()
+            for cell in self.text_sh[1]:
+                header_row.append(cell.value)
+            header_row.append(self.reg_sh.cell(row=1, column=self.reg_column_index).value)
+            result_sh.append(header_row)
             is_logic_code_error = self.check_text('测试', self.logic_code, self.reg_column_index)
             if type(is_logic_code_error) is bool:
                 self.trigger.emit('码表逻辑语法错误', 'error')
@@ -143,7 +148,13 @@ class ProcessReg(QThread):
                 if cell.row == 1:
                     continue
                 result = self.check_text(str(cell.value), self.logic_code, self.reg_column_index)
-                result_sh.append([self.text_sh.cell(row=cell.row, column=self.text_column_index).value, result])
+
+                result_row = list()
+                for cell_item in self.text_sh[cell.row]:
+                    result_row.append(cell_item.value)
+                result_row.append(result)
+
+                result_sh.append(result_row)
                 progress_num_now = math.ceil(cell.row / self.text_sh.max_row * 100)
                 if progress_num != progress_num_now:
                     self.trigger.emit('{}%'.format(progress_num_now), 'spin')
